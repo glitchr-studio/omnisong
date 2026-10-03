@@ -1,0 +1,29 @@
+# glitchr/omnisong with every catalogue package, against the real services:
+#
+#   cp .env.dist .env                                        # an Odesli key if you have one; iTunes needs none
+#   docker compose run --rm omnisong catalogs                # which catalogues are installed and configured
+#   docker compose run --rm omnisong links 4015372820954 --label ES-DUR --label-url https://www.es-dur.de
+#   docker compose run --rm omnisong release 4015372820954   # the merged release: tracks, previews, links
+#   docker compose run --rm omnisong releases "Brieuc Vourch" --limit 10
+#   docker compose run --rm omnisong embed https://music.apple.com/de/album/perspectives-concertantes/1793146044 --dark
+#   docker compose run --rm omnisong test                    # every package's tests
+#
+# Catalogues come from GitHub (branch 1.x) unless their checkout sits under
+# OMNISONG_PLUGINS (set it to ../.. in .env when this core sits in the
+# workspace beside them): then that checkout is what runs.
+name: omnisong-harness
+
+services:
+  omnisong:
+    build: .
+    image: glitchr/omnisong-harness
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - ..:/omnisong/core
+      - ${OMNISONG_PLUGINS:-./plugins}:/omnisong/plugins:ro
+      - harness:/harness
+
+volumes:
+  harness:

@@ -1,0 +1,27 @@
+{
+    "name": "glitchr/omnisong",
+    "type": "library",
+    "description": "Omnisong: one contract for listening to a musician's catalogue - releases, tracks, previews, the links to every platform with the label first, and the embeds that play from them - and its Symfony bundle.",
+    "keywords": ["music", "discography", "smart-links", "odesli", "itunes", "player", "omnisong"],
+    "license": "LGPL-3.0-or-later",
+    "authors": [{"name": "Marco Meyer", "email": "marco.meyer@glitchr.io"}],
+    "require": {
+        "php": ">=8.2",
+        "symfony/http-client-contracts": "^3.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0",
+        "symfony/config": "^6.4|^7.0|^8.0",
+        "symfony/dependency-injection": "^6.4|^7.0|^8.0",
+        "symfony/http-client": "^6.4|^7.0|^8.0",
+        "symfony/http-kernel": "^6.4|^7.0|^8.0"
+    },
+    "autoload": {
+        "psr-4": {"Omnisong\\": ""},
+        "exclude-from-classmap": ["/Tests/", "/docker/"]
+    },
+    "autoload-dev": {
+        "psr-4": {"Omnisong\\Tests\\": "Tests/"}
+    },
+    "config": {"sort-packages": true}
+}

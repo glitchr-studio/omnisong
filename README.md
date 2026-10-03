@@ -1,0 +1,101 @@
+# glitchr/omnisong
+
+One contract for listening to a musician's catalogue - the Omnibus of records. Listening, not
+publishing: where a recording is, what is on it, the previews and the players, read from the
+services that know it. And the label first: a musician's site shows "released by ES-DUR, buy it
+there" before "listen on Spotify".
+
+```php
+$release = $catalog->release(Reference::upc('4015372820954'), new Label('ES-DUR', 'https://www.es-dur.de'));
+
+$release->tracks[0]->previewUrl;                 // 30 seconds, for an <audio> element
+$release->links->first();                        // ES-DUR, then the streamers in order
+$embedder->embed($release->links->get(Platform::SPOTIFY));   // the platform's own player
+$catalog->releases('Anaëlle Tourret');           // what an artist put out, newest first
+```
+
+This package holds the contract (`CatalogInterface`, `CatalogFactory`, `Registry`), the aggregator
+(`Catalog\Catalog`), the models (`Reference`, `Release`, `Track`, `Label`, `PlatformLinks`,
+`Embed`...), the `Platform` enum, the `Player\Embedder` and the Symfony bundle. Each catalogue is
+a package of its own:
+
+| Package | Catalogue |
+|---|---|
+| `omnisong/odesli` | Odesli (song.link): the same song or album on every platform, by a URL or a platform's id |
+| `omnisong/itunes` | The iTunes Search API: releases, their tracks and 30-second previews, an artist's albums - no key |
+
+A reference is a URL on any platform, a UPC/EAN (a release), an ISRC (a recording) or a
+platform's own id; `Reference::parse()` reads any of them from a string. A catalogue answers what
+it can and throws `NotSupportedException` for the rest: `Catalog` asks every configured catalogue
+in turn and merges what they say. iTunes finds the release by its UPC and gives its tracks; Odesli,
+which reads no UPC, is asked again by the iTunes id and gives the other platforms. A catalogue that
+is down, rate limited or refused is skipped and named in `$catalog->incomplete`: a site does not
+cache that half answer.
+
+`PlatformLinks` are in the order a site shows them (`Platform::rank()`): the label, its shop,
+Bandcamp, then Spotify, Apple Music, YouTube Music, YouTube, Deezer, Qobuz, Idagio, Tidal, Amazon
+Music, then the stores. `toArray()` / `fromArray()` store them as URLs by platform.
+
+## The players
+
+`Player\Embedder` turns a link into the platform's own iframe, from its public embed URL - no
+key, no SDK: Spotify (albums, tracks, playlists, artists), Apple Music (albums, songs - `?i=` for
+one track of an album -, playlists), Deezer (albums, tracks, playlists, artists), YouTube and
+YouTube Music (through youtube-nocookie.com) and SoundCloud. Light or dark, compact or full; the
+iframe is lazy and sandboxed, and `Embed::$src` names the host a Content-Security-Policy's
+`frame-src` must allow.
+
+Spotify, Apple Music and Deezer play the whole track to a listener signed in with a subscription -
+a stream counted for the artist, as in their apps - and a 30-second preview to everyone else.
+Load the player on a click, not with the page: it sets the platform's cookies.
+
+## Symfony
+
+`Omnisong\Bridge\Symfony\OmnisongBundle`: every `omnisong/*` catalogue installed registered, the
+catalogues built from configuration, `CatalogInterface` autowired as the aggregator that asks them
+in the configured order, each catalogue injectable by its name, the `Embedder` with the site's
+theme.
+
+```yaml
+omnisong:
+    catalogs:            # by name, in the order the aggregator asks them
+        odesli: { factory: odesli, options: { api_key: '%env(default::ODESLI_API_KEY)%', country: 'DE' } }
+        itunes: { factory: itunes, options: { country: 'de' } }
+    player:
+        theme: light     # light|dark, the Embedder's default
+        country: ~       # overrides the store Apple Music opens
+```
+
+```php
+public function __construct(CatalogInterface $catalog, EmbedderInterface $embedder) {}
+public function __construct(CatalogInterface $itunes) {}   // one catalogue, by its name
+```
+
+With Twig installed, the templates have the players and the platforms' names:
+
+```twig
+{{ omnisong_embed(release.links.get(platform)) }}
+{{ omnisong_embed('https://open.spotify.com/album/...', {theme: 'dark', compact: true}) }}
+{{ omnisong_platform('apple_music').label }}   {{ link.platform.value|omnisong_platform_label }}
+```
+
+An application's own `CatalogFactoryInterface` is registered too (autoconfigured).
+
+## Docker: every catalogue, for real
+
+`docker/` runs this package with every `omnisong/*` catalogue installed - from GitHub, or from the
+checkouts beside this one when `OMNISONG_PLUGINS=../..` is set - and a console that asks the real
+services with the settings in `docker/.env` (copy `.env.dist`). iTunes needs no key; Odesli
+refuses keyless calls (401) and is skipped, and said so, until `ODESLI_API_KEY` is set.
+
+```sh
+cd docker && cp .env.dist .env
+docker compose run --rm omnisong catalogs                 # which catalogues are installed and configured
+docker compose run --rm omnisong links 4015372820954 --label ES-DUR --label-url https://www.es-dur.de
+docker compose run --rm omnisong release 4015372820954 --label ES-DUR --label-url https://www.es-dur.de   # JSON
+docker compose run --rm omnisong releases "Brieuc Vourch" --limit 10
+docker compose run --rm omnisong embed https://music.apple.com/de/album/perspectives-concertantes/1793146044 --dark
+docker compose run --rm omnisong test                     # every package's tests
+```
+
+License: LGPL-3.0-or-later.
