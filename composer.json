@@ -14,7 +14,16 @@
         "symfony/config": "^6.4|^7.0|^8.0",
         "symfony/dependency-injection": "^6.4|^7.0|^8.0",
         "symfony/http-client": "^6.4|^7.0|^8.0",
-        "symfony/http-kernel": "^6.4|^7.0|^8.0"
+        "symfony/http-kernel": "^6.4|^7.0|^8.0",
+        "twig/twig": "^3.0"
+    },
+    "suggest": {
+        "omnisong/odesli": "Odesli (song.link): the same song or album on every platform, by a URL or a platform's id",
+        "omnisong/itunes": "The iTunes Search API: releases, their tracks and 30-second previews, an artist's albums - no key",
+        "symfony/config": "In a Symfony application: the configuration of Omnisong\\Bridge\\Symfony\\OmnisongBundle",
+        "symfony/dependency-injection": "In a Symfony application: the services of Omnisong\\Bridge\\Symfony\\OmnisongBundle",
+        "symfony/http-kernel": "In a Symfony application: Omnisong\\Bridge\\Symfony\\OmnisongBundle itself",
+        "twig/twig": "With Twig: Omnisong\\Bridge\\Twig\\OmnisongExtension, the players and the platforms' names in the templates"
     },
     "autoload": {
         "psr-4": {"Omnisong\\": ""},
