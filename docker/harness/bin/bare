@@ -1,0 +1,126 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Omnisong in bare PHP: no bundle, no container, no console component. The
+ * registry is built by hand from the catalogue packages installed, the
+ * aggregator over it is asked for the release with the UPC 4015372820954
+ * ("Perspectives Concertantes"), its label first - the iTunes Search API,
+ * no key - and the script lists what PHP loaded on the way.
+ *
+ *   docker compose run --rm omnisong bare              # exits 1 when a class of a framework was loaded
+ *   docker compose run --rm omnisong bare --recorded   # the answers kept in recorded/ instead of the calls
+ *   docker compose run --rm omnisong bare --json       # the same, whole: every class loaded, every file since the autoloader
+ *
+ * Without --recorded, Odesli is asked only when ODESLI_API_KEY is set: it
+ * refuses keyless calls (401). The answers in recorded/ are the catalogue
+ * packages' fixtures: iTunes' as answered on 2026-10-03 (store "de"),
+ * Odesli's written from what album.link/i/1793146044 showed that day.
+ *
+ * OMNISONG_AUTOLOAD names another autoloader than the harness's.
+ */
+
+use Omnisong\Catalog\Catalog;
+use Omnisong\Model\Label;
+use Omnisong\Model\Reference;
+use Omnisong\Registry;
+use Symfony\Component\HttpClient\HttpClient;
+use Symfony\Component\HttpClient\MockHttpClient;
+use Symfony\Component\HttpClient\Response\MockResponse;
+
+require getenv('OMNISONG_AUTOLOAD') ?: '/harness/vendor/autoload.php';
+// What Composer requires for every package installed (their autoload.files: Twig's functions, where Twig is
+// installed for the bridge's tests) is loaded before this line, whatever the script does: not counted below.
+$autoloaded = get_included_files();
+
+const UPC = '4015372820954';
+
+$recorded = \in_array('--recorded', $argv, true);
+$http = !$recorded ? null : new MockHttpClient(static function (string $method, string $url): MockResponse {
+    parse_str((string) parse_url($url, \PHP_URL_QUERY), $query);
+    $path = (string) parse_url($url, \PHP_URL_PATH);
+
+    return match (true) {
+        // As Apple serves it: JSON under a text/javascript content type.
+        '/lookup' === $path && (UPC === ($query['upc'] ?? null) || '1793146044' === ($query['id'] ?? null)) => new MockResponse((string) file_get_contents(__DIR__.'/../recorded/itunes-lookup-upc-4015372820954.json'), ['response_headers' => ['content-type' => 'text/javascript; charset=utf-8']]),
+        str_ends_with($path, '/links') => new MockResponse((string) file_get_contents(__DIR__.'/../recorded/odesli-links-album-1793146044.json'), ['response_headers' => ['content-type' => 'application/json']]),
+        default => new MockResponse("{\n \"resultCount\":0,\n \"results\": []\n}", ['response_headers' => ['content-type' => 'text/javascript; charset=utf-8']]),
+    };
+});
+
+$factories = [];
+foreach (require __DIR__.'/../plugins.php' as [, $class]) {
+    if (class_exists($class)) {
+        $factories[] = new $class($http ??= HttpClient::create(['timeout' => 30, 'headers' => ['User-Agent' => 'omnisong-harness/1.x']]));
+    }
+}
+$installed = array_map(static fn ($factory) => $factory->getName(), $factories);
+$config = array_filter(require __DIR__.'/../config/catalogs.php', static fn (array $catalog) => \in_array($catalog['factory'], $installed, true));
+$config = array_map(static fn (array $catalog) => ['factory' => $catalog['factory'], 'options' => array_filter($catalog['options'], static fn ($value) => null !== $value)], $config);
+if ($recorded) {
+    // The store the answers were recorded from; a key that is manifestly not one: nothing is called.
+    $config = array_intersect_key(['odesli' => ['factory' => 'odesli', 'options' => ['api_key' => 'odesli_test_not_a_real_key', 'country' => 'DE']], 'itunes' => ['factory' => 'itunes', 'options' => ['country' => 'de']]], $config);
+} elseif (isset($config['odesli']) && !isset($config['odesli']['options']['api_key'])) {
+    unset($config['odesli']);
+    $skipped = 'odesli';
+}
+$registry = new Registry($factories, $config);
+
+$report = ['recorded' => $recorded, 'factories' => $registry->factories(), 'catalogs' => $registry->names(), 'skipped' => $skipped ?? null, 'release' => null, 'incomplete' => []];
+if ($registry->names()) {
+    $catalog = new Catalog($registry->all());
+    $release = $catalog->release(Reference::upc(UPC), new Label('ES-DUR', 'https://www.es-dur.de'));
+    $report['incomplete'] = $catalog->incomplete;
+    $report['release'] = null === $release ? null : [
+        'title' => $release->title,
+        'artist' => $release->artist,
+        'upc' => $release->upc,
+        'type' => $release->type,
+        'released' => $release->releasedAt?->format('Y-m-d'),
+        'label' => $release->label?->name,
+        'tracks' => \count($release->tracks),
+        'previews' => \count(array_filter($release->tracks, static fn ($track) => null !== $track->previewUrl)),
+        'first' => !$release->tracks ? null : ['title' => $release->tracks[0]->title, 'duration' => $release->tracks[0]->duration, 'preview' => $release->tracks[0]->previewUrl],
+        'links' => $release->links?->toArray() ?? [],
+    ];
+}
+
+// What PHP loaded to get there: the proof that no framework was needed.
+$report['symbols'] = [...get_declared_classes(), ...get_declared_interfaces(), ...get_declared_traits()];
+$report['files'] = array_values(array_diff(get_included_files(), $autoloaded));
+$framework = array_values(preg_grep('~^(?:Symfony\\\\Component\\\\(?:DependencyInjection|Config|HttpKernel|HttpFoundation)|Symfony\\\\Bundle|Symfony\\\\Bridge|Doctrine|Twig)\\\\~', $report['symbols']));
+$symfony = array_values(array_unique(array_map(static fn (string $s) => implode('\\', \array_slice(explode('\\', $s), 0, 3)), preg_grep('~^Symfony\\\\(?!Polyfill)~', $report['symbols']))));
+sort($symfony);
+
+if (\in_array('--json', $argv, true)) {
+    echo json_encode($report, \JSON_PRETTY_PRINT | \JSON_UNESCAPED_SLASHES | \JSON_UNESCAPED_UNICODE), "\n";
+    exit($framework ? 1 : 0);
+}
+
+echo "Omnisong in bare PHP: the registry built by hand, no bundle, no container.\n\n";
+foreach ($report['catalogs'] as $i => $name) {
+    printf("  %d. %s\n", $i + 1, $name);
+}
+if ($report['skipped']) {
+    printf("  %s is left out: no ODESLI_API_KEY, and song.link refuses keyless calls\n", $report['skipped']);
+}
+if (!$installed) {
+    echo "  no omnisong/* catalogue package is installed\n";
+}
+if ($release = $report['release']) {
+    echo "\nThe release with the UPC ", UPC, $recorded ? ', from the answers kept in recorded/' : ', asked of '.implode(' and ', $report['catalogs']), ":\n";
+    printf("  %s - %s\n  %s of %s, %s\n", $release['title'], $release['artist'], $release['type'], $release['released'], $release['label']);
+    printf("  %d tracks, %d with a preview; the first: %s (%s)\n  %s\n", $release['tracks'], $release['previews'], $release['first']['title'] ?? '-', isset($release['first']['duration']) ? gmdate('i:s', (int) round($release['first']['duration'])) : '-', $release['first']['preview'] ?? 'no preview');
+    echo "  where it is, the label first:\n";
+    foreach ($release['links'] as $platform => $url) {
+        printf("    %-13s %s\n", $platform, $url);
+    }
+} elseif ($report['catalogs']) {
+    echo "\nThe release with the UPC ", UPC, " was not found.\n";
+}
+foreach ($report['incomplete'] as $name) {
+    printf("  incomplete: \"%s\" could not be reached\n", $name);
+}
+echo "\nLoaded from Symfony: ", implode(', ', $symfony) ?: 'nothing', "\n";
+echo 'Classes of a framework (DependencyInjection, Config, HttpKernel, HttpFoundation, a bundle, a bridge, Doctrine, Twig): ', $framework ? implode(', ', $framework) : 'none', "\n";
+exit($framework ? 1 : 0);
