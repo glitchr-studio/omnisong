@@ -16,8 +16,9 @@ $catalog->releases('Anaëlle Tourret');           // what an artist put out, new
 
 This package holds the contract (`CatalogInterface`, `CatalogFactory`, `Registry`), the aggregator
 (`Catalog\Catalog`), the models (`Reference`, `Release`, `Track`, `Label`, `PlatformLinks`,
-`Embed`...), the `Platform` enum, the `Player\Embedder` and the Symfony bundle. Each catalogue is
-a package of its own:
+`Embed`...), the `Platform` enum, the `Player\Embedder` and a bridge for Symfony. It needs no
+framework: it requires nothing but `symfony/http-client-contracts`, each catalogue package
+`symfony/http-client`. Each catalogue is a package of its own:
 
 | Package | Catalogue |
 |---|---|
@@ -36,6 +37,39 @@ cache that half answer.
 Bandcamp, then Spotify, Apple Music, YouTube Music, YouTube, Deezer, Qobuz, Idagio, Tidal, Amazon
 Music, then the stores. `toArray()` / `fromArray()` store them as URLs by platform.
 
+## Plain PHP
+
+```sh
+composer require glitchr/omnisong omnisong/itunes
+```
+
+```php
+require __DIR__.'/vendor/autoload.php';
+
+use Omnisong\Catalog\Catalog;
+use Omnisong\Itunes\ItunesCatalogFactory;
+use Omnisong\Model\Label;
+use Omnisong\Model\Reference;
+use Omnisong\Registry;
+use Symfony\Component\HttpClient\HttpClient;
+
+$registry = new Registry([new ItunesCatalogFactory(HttpClient::create())], [
+    'itunes' => ['factory' => 'itunes', 'options' => ['country' => 'de']],
+]);
+$catalog = new Catalog($registry->all());
+
+$release = $catalog->release(Reference::upc('4015372820954'), new Label('ES-DUR', 'https://www.es-dur.de'));
+echo $release->title, "\n";                       // Perspectives Concertantes
+echo $release->tracks[0]->previewUrl, "\n";       // 30 seconds, for an <audio> element
+echo $release->links->first()->url, "\n";         // https://www.es-dur.de: the label first
+```
+
+No key: the iTunes Search API is open. A factory takes the HTTP client to call with - the
+application's, a `MockHttpClient` in a test - and makes its own when given none. The whole
+script and its answer, and the rest: [docs/installation.md](docs/installation.md). No class of a
+framework is loaded on the way: `Tests/BareTest.php` checks it in a process of its own, and so
+does `docker compose run --rm omnisong bare`.
+
 ## The players
 
 `Player\Embedder` turns a link into the platform's own iframe, from its public embed URL - no
@@ -51,6 +85,9 @@ Load the player on a click, not with the page: it sets the platform's cookies.
 
 ## Symfony
 
+In a Symfony application a bundle does the wiring; its components (`symfony/config`,
+`symfony/dependency-injection`, `symfony/http-kernel`, `twig/twig`) are not required by this
+package: the application has them ([docs/symfony.md](docs/symfony.md)).
 `Omnisong\Bridge\Symfony\OmnisongBundle`: every `omnisong/*` catalogue installed registered, the
 catalogues built from configuration, `CatalogInterface` autowired as the aggregator that asks them
 in the configured order, each catalogue injectable by its name, the `Embedder` with the site's
@@ -95,7 +132,14 @@ docker compose run --rm omnisong links 4015372820954 --label ES-DUR --label-url 
 docker compose run --rm omnisong release 4015372820954 --label ES-DUR --label-url https://www.es-dur.de   # JSON
 docker compose run --rm omnisong releases "Brieuc Vourch" --limit 10
 docker compose run --rm omnisong embed https://music.apple.com/de/album/perspectives-concertantes/1793146044 --dark
+docker compose run --rm omnisong bare                     # plain PHP: no bundle, no container, and what PHP loaded
 docker compose run --rm omnisong test                     # every package's tests
 ```
+
+## Documentation
+
+- [Installation and first calls](docs/installation.md): plain PHP first
+- [Symfony](docs/symfony.md)
+- [The Docker harness](docs/harness.md)
 
 License: LGPL-3.0-or-later.
