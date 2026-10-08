@@ -3,7 +3,7 @@
     "type": "library",
     "description": "Omnisong: one contract for listening to a musician's catalogue - releases, tracks, previews, the links to every platform with the label first, and the embeds that play from them - and its Symfony bundle.",
     "keywords": ["music", "discography", "smart-links", "odesli", "itunes", "player", "omnisong"],
-    "license": "LGPL-3.0-or-later",
+    "license": "MIT",
     "authors": [{"name": "Marco Meyer", "email": "marco.meyer@glitchr.io"}],
     "require": {
         "php": ">=8.2",

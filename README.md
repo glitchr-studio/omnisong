@@ -142,4 +142,4 @@ docker compose run --rm omnisong test                     # every package's test
 - [Symfony](docs/symfony.md)
 - [The Docker harness](docs/harness.md)
 
-License: LGPL-3.0-or-later.
+License: MIT since 2026-10-09; earlier versions remain published under LGPL-3.0-or-later.
